@@ -93,7 +93,12 @@ class SentimentAnalyzer:
         confidence = max(proba)
 
         if confidence < 0.45:
-            return self.predict_with_textblob(text)
+    # Use fallback
+         return self.predict_with_textblob(text)
+        elif confidence < 0.55:
+    # Default to 'neutral' when confidence is low but above fallback threshold
+         return 'neutral', confidence
+
 
         return sentiment, confidence
 
@@ -188,25 +193,24 @@ def generate_sample_data():
         "Fabulous experience!",
         "Absolutely fabulous quality!"
     ]
+
     neutral_feedback = [
         "The product is okay, nothing special.",
         "It works as expected, no complaints.",
         "Average quality for the price.",
-        "it was average",
-        "Average",
-        "ok ok",
         "It's fine, does what it's supposed to do.",
         "Delivery was on time, product is standard quality."
     ]
+
     bad_feedback = [
         "Very disappointed with this purchase.",
         "The product broke after one week of use.",
         "Customer service was terrible and unhelpful.",
         "Wouldn't recommend, poor quality for the price.",
         "Slow delivery and the item was damaged.",
-        "bad",
-        "poor",
-        "disappointed"
+        "It was the worst experience I've had.",
+        "I have never used a worse appliance.",
+        "This product is awful and disappointing."
     ]
     all_feedback = [{'text': text, 'sentiment': 'good'} for text in good_feedback] + \
                    [{'text': text, 'sentiment': 'neutral'} for text in neutral_feedback] + \
