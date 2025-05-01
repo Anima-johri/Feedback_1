@@ -1,34 +1,12 @@
-# Customer Feedback Sentiment Analysis System
+Feedback Sentiment Analyzer Web App
 
-This project implements a complete feedback management system with sentiment analysis, spell checking, and a SQLite database backend. The system categorizes customer feedback as "good," "neutral," or "bad" using machine learning, automatically corrects spelling mistakes, and displays feedback ordered by sentiment.
 
-## Features
-
-1. **Sentiment Analysis**: Uses a custom-trained ML model based on Naive Bayes and TextBlob for backup
-2. **Spelling Correction**: Automatically detects and corrects misspelled words in feedback
-3. **SQLite Database**: Stores all feedback with original text, corrected text, sentiment, and confidence score
-4. **Web Interface**: Simple UI for submitting and viewing feedback
-5. **Sorted Display**: Feedback is displayed in order of good → neutral → bad
-
-## Technology Stack
-
-- **Python**: Core programming language
-- **Flask**: Web framework for the application
-- **SQLite**: Database for storing feedback
-- **TextBlob**: For sentiment analysis and as a backup classifier
-- **NLTK**: For text processing and spell checking
-- **scikit-learn**: For the machine learning model (Multinomial Naive Bayes)
-
-## System Architecture
-
-The system consists of several components:
-
-1. **SpellChecker**: Corrects spelling mistakes in the feedback text
-2. **SentimentAnalyzer**: Classifies the feedback as good, neutral, or bad
-3. **FeedbackDB**: Handles database operations for storing and retrieving feedback
-4. **Flask Application**: Provides APIs and web interface for the system
-
-## Installation and Setup
-
-1. Clone this repository
-2. Install the required dependencies:
+This project is a Flask-based web application designed to collect, correct, analyze, and organize user feedback using natural language processing (NLP) and machine learning techniques. It supports:
+Real-time sentiment analysis (good, neutral, bad) using a Naive Bayes classifier trained on TF-IDF features.
+Spell correction for user input using a custom edit-distance-based checker built with NLTK.
+TextBlob fallback to improve predictions in cases of low ML model confidence.
+Persistent feedback storage using SQLite, allowing sorting and retrieval based on sentiment.
+Interactive API endpoints for submitting and retrieving feedback.
+PDF report generation, allowing all stored feedback to be downloaded and reviewed offline.
+Front-end integration via a simple HTML form (extendable to full web UI or integration with external platforms).
+This project is ideal for companies or teams looking to automatically analyze customer feedback, detect sentiment trends, and generate reports from collected data.
