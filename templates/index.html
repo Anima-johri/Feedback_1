@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Feedback System</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .feedback-form {
+            border: 1px solid #ccc;
+            padding: 20px;
+            border-radius: 5px;
+        }
+        .feedback-list {
+            border: 1px solid #ccc;
+            padding: 20px;
+            border-radius: 5px;
+        }
+        .feedback-item {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .good {
+            background-color: #e6ffe6;
+        }
+        .neutral {
+            background-color: #f2f2f2;
+        }
+        .bad {
+            background-color: #ffe6e6;
+        }
+        .textarea-container {
+            position: relative;
+            width: 100%;
+        }
+        textarea {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            font-size: 16px;
+            position: relative;
+            background-color: transparent;
+            z-index: 2;
+            resize: vertical;
+            line-height: 1.5;
+            font-family: Arial, sans-serif;
+        }
+        #suggestion-text {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            color: #999;
+            opacity: 0.5;
+            pointer-events: none;
+            z-index: 1;
+            font-size: 16px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .correction {
+            font-style: italic;
+            color: #555;
+        }
+        #download-btn {
+            padding: 10px 15px;
+            background-color: #008CBA;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Customer Feedback System</h1>
+
+        <!-- Feedback Submission Form -->
+        <div class="feedback-form">
+            <h2>Submit Feedback</h2>
+            <div class="textarea-container">
+                <textarea id="feedback-text" rows="5" placeholder="Enter your feedback here..."></textarea>
+                <div id="suggestion-text"></div>
+            </div>
+            <button onclick="submitFeedback()">Submit</button>
+        </div>
+
+        <!-- Feedback List -->
+        <div class="feedback-list">
+            <h2>All Feedback (Sorted by Sentiment)</h2>
+            <div id="feedback-container"></div>
+        </div>
+
+        <!-- Download PDF Button -->
+        <button id="download-btn" onclick="downloadPDF()">Download Feedback as PDF</button>
+    </div>
+
+    <script>
+        // Load all feedback when page loads
+        window.onload = function() {
+            loadAllFeedback();
+            loadSuggestions();
+        };
+
+        // Load suggestions
+        function loadSuggestions() {
+            fetch('/api/get_feedback_suggestions')
+                .then(response => response.json())
+                .then(data => {
+                    window.feedbackSuggestions = data;
+                })
+                .catch(error => console.error('Error loading suggestions:', error));
+        }
+
+        // Submit new feedback
+        function submitFeedback() {
+            const feedbackText = document.getElementById('feedback-text').value;
+
+            if (!feedbackText) {
+                alert('Please enter feedback before submitting.');
+                return;
+            }
+
+            fetch('/api/submit_feedback', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ feedback: feedbackText })
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('feedback-text').value = '';
+                document.getElementById('suggestion-text').textContent = '';
+                loadAllFeedback();
+                loadSuggestions(); // Refresh suggestions after submission
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while submitting feedback.');
+            });
+        }
+
+        // Load all feedback
+        function loadAllFeedback() {
+            fetch('/api/get_all_feedback')
+            .then(response => response.json())
+            .then(data => {
+                const container = document.getElementById('feedback-container');
+                container.innerHTML = '';
+
+                if (data.length === 0) {
+                    container.innerHTML = '<p>No feedback available yet.</p>';
+                    return;
+                }
+
+                data.forEach(feedback => {
+                    const feedbackItem = document.createElement('div');
+                    feedbackItem.className = `feedback-item ${feedback.sentiment}`;
+
+                    const originalText = document.createElement('p');
+                    originalText.textContent = `Original: ${feedback.original_text}`;
+                    feedbackItem.appendChild(originalText);
+
+                    if (feedback.original_text !== feedback.corrected_text) {
+                        const correctedText = document.createElement('p');
+                        correctedText.className = 'correction';
+                        correctedText.textContent = `Corrected: ${feedback.corrected_text}`;
+                        feedbackItem.appendChild(correctedText);
+                    }
+
+                    const sentimentInfo = document.createElement('p');
+                    sentimentInfo.textContent = `Sentiment: ${feedback.sentiment} (Confidence: ${Math.round(feedback.sentiment_score * 100)}%)`;
+                    feedbackItem.appendChild(sentimentInfo);
+
+                    container.appendChild(feedbackItem);
+                });
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('An error occurred while loading feedback.');
+            });
+        }
+
+        // Download feedback PDF
+        function downloadPDF() {
+            fetch('/api/download_feedback_pdf')
+                .then(response => response.blob())
+                .then(blob => {
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = 'feedback_report.pdf';
+                    link.click();
+                })
+                .catch(error => console.error('Error downloading PDF:', error));
+        }
+
+        // Ghost text suggestion implementation
+        const feedbackInput = document.getElementById('feedback-text');
+        const suggestionDiv = document.getElementById('suggestion-text');
+
+        feedbackInput.addEventListener('input', function() {
+            if (!window.feedbackSuggestions) return;
+            
+            const inputText = feedbackInput.value;
+            suggestionDiv.textContent = '';
+            
+            if (!inputText) return;
+
+            // Find matching suggestions
+            const matches = window.feedbackSuggestions.filter(s => 
+                s.toLowerCase().startsWith(inputText.toLowerCase()) && 
+                s.toLowerCase() !== inputText.toLowerCase()
+            );
+            
+            if (matches.length > 0) {
+                // Only show the completion part (what comes after the user's input)
+                const suggestion = matches[0];
+                const completion = suggestion.substring(inputText.length);
+                
+                // Add non-breaking spaces equal to the length of user input to align the text
+                const spacer = '\u00A0'.repeat(inputText.length);
+                suggestionDiv.textContent = spacer + completion;
+                
+                // Ensure proper text alignment by adjusting the scroll position
+                suggestionDiv.scrollTop = feedbackInput.scrollTop;
+            }
+        });
+
+        // Allow user to accept the suggestion with Tab key
+        feedbackInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Tab' && suggestionDiv.textContent) {
+                e.preventDefault();
+                feedbackInput.value = suggestionDiv.textContent;
+                suggestionDiv.textContent = '';
+                // Set cursor at the end of text
+                feedbackInput.selectionStart = feedbackInput.value.length;
+                feedbackInput.selectionEnd = feedbackInput.value.length;
+            }
+        });
+
+        // Clear suggestion when user clicks away
+        document.addEventListener('click', function(e) {
+            if (e.target !== feedbackInput) {
+                suggestionDiv.textContent = '';
+            }
+        });
+        
+        // Keep scroll position of suggestion div in sync with textarea
+        feedbackInput.addEventListener('scroll', function() {
+            suggestionDiv.scrollTop = feedbackInput.scrollTop;
+        });
+    </script>
+</body>
+</html>

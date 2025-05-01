@@ -1,0 +1,113 @@
+import sqlite3
+from textblob import TextBlob
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from nltk.stem import WordNetLemmatizer
+import string
+import nltk
+
+# Download necessary NLTK data (run this once)
+try:
+    stopwords.words('english')
+    word_tokenize("example")
+    WordNetLemmatizer().lemmatize('running')
+except LookupError as e:
+    print(f"An NLTK resource download failed: {e}")
+    print("Please try running the following commands in a Python interpreter to download the missing resources:")
+    print(">>> import nltk")
+    print(">>> nltk.download('stopwords')")
+    print(">>> nltk.download('punkt')")
+    print(">>> nltk.download('wordnet')")
+    print(">>> nltk.download('omw-1.4')") # For lemmatization
+    exit() # Exit the script if NLTK resources are missing
+
+stop_words = set(stopwords.words('english'))
+lemmatizer = WordNetLemmatizer()
+
+def preprocess_text(text):
+    text = text.lower()
+    text = text.translate(str.maketrans('', '', string.punctuation))
+    tokens = word_tokenize(text)
+    tokens = [lemmatizer.lemmatize(w) for w in tokens if not w in stop_words and w.isalpha()]
+    return " ".join(tokens)
+
+def predict_sentiment(text):
+    analysis = TextBlob(text)
+    polarity = analysis.sentiment.polarity
+    if polarity > 0.1:
+        return "good"
+    elif polarity < -0.1:
+        return "bad"
+    else:
+        return "neutral"
+
+def autocorrect_text(text):
+    blob = TextBlob(text)
+    corrected_words = [str(word.correct()) for word in blob.words]
+    return " ".join(corrected_words)
+
+def create_database():
+    conn = sqlite3.connect('feedback.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            original_feedback TEXT,
+            corrected_feedback TEXT,
+            sentiment TEXT
+        )
+    ''')
+    conn.commit()
+    conn.close()
+    print("Database created successfully!")
+
+def store_feedback(original_feedback, corrected_feedback, sentiment):
+    conn = sqlite3.connect('feedback.db')
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO feedback (original_feedback, corrected_feedback, sentiment) VALUES (?, ?, ?)",
+                   (original_feedback, corrected_feedback, sentiment))
+    conn.commit()
+    conn.close()
+    print("Feedback stored successfully!")
+
+def get_ordered_feedback():
+    conn = sqlite3.connect('feedback.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT corrected_feedback, sentiment FROM feedback
+        ORDER BY CASE sentiment
+            WHEN 'good' THEN 1
+            WHEN 'neutral' THEN 2
+            WHEN 'bad' THEN 3
+        END
+    ''')
+    feedback_data = cursor.fetchall()
+    conn.close()
+    return feedback_data
+
+# Example Usage
+if __name__ == "__main__":
+    create_database()
+
+    feedbacks = [
+        "The product was awsome! I loved it.",
+        "This is a terrrible service. Never again!",
+        "It was okay, nothing special.",
+        "I am so happy with my purchase.",
+        "The quality is really poor.",
+        "Could have been better, but not bad.",
+        "Excellent customer support!",
+        "Absolutely disgusting experience.",
+        "A bit disappointing, to be honest.",
+        "Highly recommended!"
+    ]
+
+    for feedback in feedbacks:
+        corrected_feedback = autocorrect_text(feedback)
+        sentiment = predict_sentiment(corrected_feedback)
+        store_feedback(feedback, corrected_feedback, sentiment)
+
+    ordered_feedback = get_ordered_feedback()
+    print("\nOrdered Feedback:")
+    for feedback, sentiment in ordered_feedback:
+        print(f"Sentiment: {sentiment.capitalize()} - Feedback: {feedback}")
