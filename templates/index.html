@@ -92,6 +92,35 @@
             cursor: pointer;
             margin-top: 20px;
         }
+        
+        /* New styles for error message display */
+        .error-message {
+            color: white;
+            background-color: #f44336;
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            display: none;
+        }
+        
+        .error-reasons {
+            margin-top: 5px;
+            font-size: 14px;
+            list-style-type: disc;
+            padding-left: 20px;
+        }
+        
+        .shake {
+            animation: shake 0.5s;
+        }
+        
+        @keyframes shake {
+            0% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            50% { transform: translateX(5px); }
+            75% { transform: translateX(-5px); }
+            100% { transform: translateX(0); }
+        }
     </style>
 </head>
 <body>
@@ -101,6 +130,11 @@
         <!-- Feedback Submission Form -->
         <div class="feedback-form">
             <h2>Submit Feedback</h2>
+            <!-- New error message container -->
+            <div id="error-container" class="error-message">
+                <div id="error-text">Error message goes here</div>
+                <ul id="error-reasons" class="error-reasons"></ul>
+            </div>
             <div class="textarea-container">
                 <textarea id="feedback-text" rows="5" placeholder="Enter your feedback here..."></textarea>
                 <div id="suggestion-text"></div>
@@ -138,9 +172,16 @@
         // Submit new feedback
         function submitFeedback() {
             const feedbackText = document.getElementById('feedback-text').value;
+            const errorContainer = document.getElementById('error-container');
+            const errorText = document.getElementById('error-text');
+            const errorReasons = document.getElementById('error-reasons');
+            
+            // Hide any existing error messages
+            errorContainer.style.display = 'none';
+            errorReasons.innerHTML = '';
 
             if (!feedbackText) {
-                alert('Please enter feedback before submitting.');
+                showError('Please enter feedback before submitting.', ['The feedback field cannot be empty']);
                 return;
             }
 
@@ -151,7 +192,14 @@
                 },
                 body: JSON.stringify({ feedback: feedbackText })
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(data => {
+                        throw data;
+                    });
+                }
+                return response.json();
+            })
             .then(data => {
                 document.getElementById('feedback-text').value = '';
                 document.getElementById('suggestion-text').textContent = '';
@@ -160,8 +208,40 @@
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('An error occurred while submitting feedback.');
+                if (error.error) {
+                    let reasonsList = error.reasons || ['The system could not process this feedback.'];
+                    showError(error.error, reasonsList);
+                    
+                    // Add shake animation to feedback textarea for visual feedback
+                    const textarea = document.getElementById('feedback-text');
+                    textarea.classList.add('shake');
+                    setTimeout(() => {
+                        textarea.classList.remove('shake');
+                    }, 500);
+                } else {
+                    showError('An error occurred while submitting feedback.');
+                }
             });
+        }
+
+        // Function to display error messages
+        function showError(message, reasons = []) {
+            const errorContainer = document.getElementById('error-container');
+            const errorText = document.getElementById('error-text');
+            const errorReasons = document.getElementById('error-reasons');
+            
+            errorText.textContent = message;
+            errorReasons.innerHTML = '';
+            
+            if (reasons && reasons.length > 0) {
+                reasons.forEach(reason => {
+                    const li = document.createElement('li');
+                    li.textContent = reason;
+                    errorReasons.appendChild(li);
+                });
+            }
+            
+            errorContainer.style.display = 'block';
         }
 
         // Load all feedback
@@ -207,15 +287,23 @@
 
         // Download feedback PDF
         function downloadPDF() {
-            fetch('/api/download_feedback_pdf')
-                .then(response => response.blob())
+            fetch('/api/export_pdf')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok: ' + response.statusText);
+                    }
+                    return response.blob();
+                })
                 .then(blob => {
                     const link = document.createElement('a');
                     link.href = URL.createObjectURL(blob);
                     link.download = 'feedback_report.pdf';
                     link.click();
                 })
-                .catch(error => console.error('Error downloading PDF:', error));
+                .catch(error => {
+                    console.error('Error downloading PDF:', error);
+                    alert('Failed to download PDF. Please try again later.');
+                });
         }
 
         // Ghost text suggestion implementation
@@ -254,7 +342,9 @@
         feedbackInput.addEventListener('keydown', function(e) {
             if (e.key === 'Tab' && suggestionDiv.textContent) {
                 e.preventDefault();
-                feedbackInput.value = suggestionDiv.textContent;
+                const spacerLength = suggestionDiv.textContent.search(/[^\u00A0]/);
+                const suggestion = suggestionDiv.textContent.substring(spacerLength);
+                feedbackInput.value = feedbackInput.value + suggestion;
                 suggestionDiv.textContent = '';
                 // Set cursor at the end of text
                 feedbackInput.selectionStart = feedbackInput.value.length;

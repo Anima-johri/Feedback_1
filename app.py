@@ -12,7 +12,10 @@ import pickle
 from nltk.corpus import words
 from nltk.metrics.distance import edit_distance
 from nltk.tokenize import wordpunct_tokenize
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, make_response
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+import io
 
 nltk.download('words')
 
@@ -80,7 +83,7 @@ class SentimentAnalyzer:
 
     def predict(self, text):
         text_lower = text.lower()
-        # Manual override for known strong positive keywords
+
         if 'fabulous' in text_lower:
             return 'good', 0.95
 
@@ -93,12 +96,10 @@ class SentimentAnalyzer:
         confidence = max(proba)
 
         if confidence < 0.45:
-    # Use fallback
-         return self.predict_with_textblob(text)
-        elif confidence < 0.55:
-    # Default to 'neutral' when confidence is low but above fallback threshold
-         return 'neutral', confidence
+            return self.predict_with_textblob(text)
 
+        if confidence < 0.55 and sentiment == 'neutral':
+            return 'neutral', confidence
 
         return sentiment, confidence
 
@@ -193,7 +194,6 @@ def generate_sample_data():
         "Fabulous experience!",
         "Absolutely fabulous quality!"
     ]
-
     neutral_feedback = [
         "The product is okay, nothing special.",
         "It works as expected, no complaints.",
@@ -201,16 +201,12 @@ def generate_sample_data():
         "It's fine, does what it's supposed to do.",
         "Delivery was on time, product is standard quality."
     ]
-
     bad_feedback = [
         "Very disappointed with this purchase.",
         "The product broke after one week of use.",
         "Customer service was terrible and unhelpful.",
         "Wouldn't recommend, poor quality for the price.",
-        "Slow delivery and the item was damaged.",
-        "It was the worst experience I've had.",
-        "I have never used a worse appliance.",
-        "This product is awful and disappointing."
+        "Slow delivery and the item was damaged."
     ]
     all_feedback = [{'text': text, 'sentiment': 'good'} for text in good_feedback] + \
                    [{'text': text, 'sentiment': 'neutral'} for text in neutral_feedback] + \
@@ -242,9 +238,52 @@ def home():
 @app.route('/api/submit_feedback', methods=['POST'])
 def submit_feedback():
     data = request.json
-    feedback_text = data.get('feedback', '')
+    feedback_text = data.get('feedback', '').strip()
     if not feedback_text:
-        return jsonify({'error': 'No feedback provided'}), 400
+        return jsonify({'error': 'No feedback provided', 'error_type': 'empty'}), 400
+
+    # Gibberish detection - Check if text is likely meaningful English
+    # 1. Check for ratio of valid English words
+    valid_words = set(words.words())
+    tokens = wordpunct_tokenize(feedback_text)
+    word_tokens = [word for word in tokens if word.isalpha()]
+    
+    if word_tokens:
+        known_words = [word for word in word_tokens if word.lower() in valid_words]
+        valid_word_ratio = len(known_words) / len(word_tokens)
+        
+        # Check for gibberish based on word validity ratio
+        if valid_word_ratio < 0.4:
+            reasons = []
+            if valid_word_ratio == 0:
+                reasons.append("No valid English words detected")
+            else:
+                reasons.append(f"Only {round(valid_word_ratio * 100)}% of words are valid English words")
+            
+            return jsonify({
+                'error': 'Feedback appears to be gibberish or invalid text.',
+                'error_type': 'gibberish',
+                'reasons': reasons
+            }), 400
+    
+    # 2. Check for random character repetition (common in gibberish)
+    char_repetition = re.search(r'(.)\1{4,}', feedback_text)
+    if char_repetition:
+        return jsonify({
+            'error': 'Feedback contains excessive character repetition.',
+            'error_type': 'gibberish',
+            'reasons': ["Text contains excessive character repetition"]
+        }), 400
+    
+    # Check for extremely short but valid feedback
+    if len(word_tokens) < 2 and len(feedback_text) < 10:
+        return jsonify({
+            'error': 'Feedback is too short to be meaningful.',
+            'error_type': 'too_short',
+            'reasons': ["Feedback must contain at least a few words to be processed"]
+        }), 400
+
+    # If all checks pass, process the feedback
     result = process_feedback(feedback_text)
     return jsonify(result)
 
@@ -258,10 +297,45 @@ def get_feedback_suggestions():
     suggestions = db.get_feedback_suggestions(limit=50)
     return jsonify(suggestions)
 
+@app.route('/api/export_pdf', methods=['GET'])
+def export_pdf():
+    feedback = db.get_all_feedback_sorted()
+
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+    y = height - 40
+
+    p.setFont("Helvetica-Bold", 16)
+    p.drawString(30, y, "Feedback Export Report")
+    y -= 30
+
+    p.setFont("Helvetica", 10)
+    for fb in feedback:
+        line1 = f"Date: {fb['created_at']} | Sentiment: {fb['sentiment']} | Confidence: {round(fb['sentiment_score'], 2)}"
+        line2 = f"Original: {fb['original_text']}"
+        line3 = f"Corrected: {fb['corrected_text']}"
+
+        for line in (line1, line2, line3, ""):
+            if y < 50:
+                p.showPage()
+                y = height - 40
+                p.setFont("Helvetica", 10)
+            p.drawString(30, y, line)
+            y -= 15
+
+    p.showPage()
+    p.save()
+    buffer.seek(0)
+
+    response = make_response(buffer.read())
+    response.headers.set('Content-Type', 'application/pdf')
+    response.headers.set('Content-Disposition', 'attachment', filename='feedback_report.pdf')
+    return response
+
 if __name__ == '__main__':
     init_db()
-    # Uncomment the following line only for one-time cleanup
-    #db.clear_feedback()
+    # db.clear_feedback()
     if not sentiment_analyzer.load_model():
         print("Training new sentiment analysis model...")
         train_model()
